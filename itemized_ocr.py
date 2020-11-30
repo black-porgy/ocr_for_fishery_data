@@ -2,11 +2,12 @@ import cv2
 import matplotlib.pyplot as plt
 import matplotlib
 import io
+import re
 
 from enum import Enum
 from google.cloud import vision
 
-input_file = 'catch_data/IMG_2176.jpeg'
+input_file = 'catch_data/IMG_2081.jpeg'
 
 
 client = vision.ImageAnnotatorClient()
@@ -68,28 +69,37 @@ def get_sorted_lines(response):
             for paragraph in block.paragraphs:
                 for word in paragraph.words:
                     for symbol in word.symbols:
-                        #シンボルの境界ボックスの頂点のx, y座標
+                        # シンボルの境界ボックスの頂点のx, y座標
                         x = symbol.bounding_box.vertices[0].x
                         y = symbol.bounding_box.vertices[0].y
                         text = symbol.text
                         bounds.append([x, y, text, symbol.bounding_box])
     # シンボルのy座標に基づいてソート（昇順）
     bounds.sort(key=lambda x: x[1])
-    for i in range(0,len(bounds)):
+    '''
+        for i in range(0,len(bounds)):
         print(bounds[i])
+    '''
     old_y = -1
+    #old_x = -1
     line = []
     lines = []
-    threshold = 1
+    threshold_y = 25
+    #threshold_x = 1
     for bound in bounds:
         x = bound[0]
         y = bound[1]
+        # yがプラマイ1以下の要素（同じ行）を取ってきて，lineに投入
         if old_y == -1:
             old_y = y
-        elif old_y-threshold <= y <= old_y+threshold:
+            #old_x = x
+        elif old_y-threshold_y <= y <= old_y+threshold_y:
             old_y = y
+            #old_x = x
         else:
+            # 同じ行のデータをまとめて，xでソート -> 同じ行の要素がそろう
             old_y = -1
+            #old_x = -1
             line.sort(key=lambda x: x[0])
             lines.append(line)
             line = []
@@ -98,9 +108,22 @@ def get_sorted_lines(response):
     lines.append(line)
     return lines
 
+def get_matched_string(pattern, string):
+    prog = re.compile(pattern)
+    result = prog.search(string)
+    if result:
+        return result.group()
+    else:
+        return False
+
 img = cv2.imread(input_file, cv2.IMREAD_COLOR)
 
 lines = get_sorted_lines(response)
+
+pattern_dict = {}
+pattern_dict['species'] = r'(ほっけ)'
+pattern_dict['size'] = r'(特々|特大|特大|大中|中|中小|小|マル小|小々|マル小々)'
+
 for line in lines:
   texts = [i[2] for i in line]
   texts = ''.join(texts)
@@ -115,11 +138,17 @@ for line in lines:
     cv2.line(img, p2, p3, (0, 255, 0), thickness=1, lineType=cv2.LINE_AA)
     cv2.line(img, p3, p4, (0, 255, 0), thickness=1, lineType=cv2.LINE_AA)
     cv2.line(img, p4, p1, (0, 255, 0), thickness=1, lineType=cv2.LINE_AA)
+  texts = [i[2] for i in line]
+  texts = ''.join(texts)
+  for key, pattern in pattern_dict.items():
+      matched_string = get_matched_string(pattern, texts)
+      if matched_string:
+          print(key, matched_string)
 
 fig = plt.figure(figsize=[10,10])
 plt.axis('off')
 plt.imshow(img[:,:,::-1]);plt.title("img_by_line")
-fig.savefig('img2.png')
+fig.savefig('img2_th25.png')
 
 
 """
